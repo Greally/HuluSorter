@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phrase Sorter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --surface2: #f0efed;
+    --border: #e0dedd;
+    --border2: #c8c7c5;
+    --text: #1a1a1a;
+    --text2: #6b6b6b;
+    --text3: #9e9e9e;
+    --green: #0f6e56;
+    --green-bg: #e1f5ee;
+    --amber: #ba7517;
+    --amber-bg: #faeeda;
+    --red: #a32d2d;
+    --red-bg: #fcebeb;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  header .subtitle {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 1px;
+  }
+
+  .header-left { display: flex; flex-direction: column; gap: 1px; }
+  .header-right { display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--surface2); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary {
+    background: #1d9e75;
+    color: #fff;
+    border-color: #0f6e56;
+  }
+  .btn.primary:hover { background: #0f6e56; }
+
+  #file-input { display: none; }
+
+  main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+  .notice {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 1rem;
+    display: none;
+  }
+  .notice.visible { display: block; }
+  .notice.warn { border-color: #f0997b; background: #faece7; color: #993c1d; }
+
+  .stats {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+    display: none;
+  }
+  .stats.visible { display: flex; }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 7px 13px;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .stat b { color: var(--text); font-weight: 600; }
+
+  .inbox-section { margin-bottom: 1.5rem; }
+  .section-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+
+  #inbox {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 58px;
+    padding: 10px;
+    border: 1.5px dashed var(--border2);
+    border-radius: var(--radius);
+    background: var(--surface2);
+    transition: background 0.12s, border-color 0.12s;
+  }
+  #inbox.drag-over {
+    background: #e1f5ee;
+    border-color: #1d9e75;
+  }
+
+  .placeholder {
+    font-size: 13px;
+    color: var(--text3);
+    margin: auto;
+    padding: 8px;
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  @media (max-width: 768px) {
+    .board { grid-template-columns: 1fr; }
+    main { padding: 1rem; }
+    header { padding: 0 1rem; }
+  }
+
+  .column {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-height: 340px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.12s;
+  }
+
+  .col-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .col-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .col-yes .col-title  { color: var(--green); }
+  .col-maybe .col-title { color: var(--amber); }
+  .col-no .col-title   { color: var(--red); }
+
+  .col-yes  { border-top: 3px solid var(--green); }
+  .col-maybe { border-top: 3px solid var(--amber); }
+  .col-no   { border-top: 3px solid var(--red); }
+
+  .col-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text2);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .drop-zone {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 200px;
+    border-radius: 0 0 var(--radius) var(--radius);
+    transition: background 0.12s;
+  }
+  .col-yes  .drop-zone.drag-over { background: var(--green-bg); }
+  .col-maybe .drop-zone.drag-over { background: var(--amber-bg); }
+  .col-no   .drop-zone.drag-over { background: var(--red-bg); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: grab;
+    user-select: none;
+    line-height: 1.5;
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .card:hover {
+    border-color: var(--border2);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+  .card.dragging { opacity: 0.35; cursor: grabbing; }
+
+  .card .col-f { color: var(--text); }
+  .card .arrow { color: var(--text3); margin: 0 6px; font-size: 12px; }
+  .card .col-g { color: var(--text2); font-style: italic; }
+
+  .empty-hint {
+    font-size: 12px;
+    color: var(--text3);
+    text-align: center;
+    padding: 1.5rem 1rem;
+    margin: auto 0;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .progress-bar-wrap {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    height: 6px;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+    display: none;
+  }
+  .progress-bar-wrap.visible { display: block; }
+  .progress-bar {
+    height: 100%;
+    background: #1d9e75;
+    border-radius: 20px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Phrase Sorter</h1>
+    <div class="subtitle">phenotype:feature/sign/condition/disease · yes</div>
+  </div>
+  <div class="header-right">
+    <button class="btn" onclick="document.getElementById('file-input').click()">Import Excel</button>
+    <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="loadFile(event)">
+    <button class="btn primary" id="export-btn" onclick="exportXLSX()" disabled>Export Excel</button>
+  </div>
+</header>
+
+<main>
+  <div class="notice" id="notice"></div>
+  <div class="stats" id="stats"></div>
+  <div class="progress-bar-wrap" id="progress-wrap">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+
+  <div class="inbox-section">
+    <div class="section-label">Unsorted — drag cards into a category below</div>
+    <div id="inbox"><div class="placeholder">Import an Excel file to get started. Rows matching the filter will appear here as draggable cards.</div></div>
+  </div>
+
+  <div class="board">
+    <div class="column col-yes"
+         ondragover="onDragOver(event)"
+         ondrop="onDrop(event,'Feature mapping confirmed')"
+         ondragleave="onDragLeave(event)">
+      <div class="col-header">
+        <span class="col-title">Feature mapping confirmed</span>
+        <span class="col-count" id="count-Feature mapping confirmed">0</span>
+      </div>
+      <div class="drop-zone" id="zone-Feature mapping confirmed"></div>
+    </div>
+
+    <div class="column col-maybe"
+         ondragover="onDragOver(event)"
+         ondrop="onDrop(event,'Further feature curation needed')"
+         ondragleave="onDragLeave(event)">
+      <div class="col-header">
+        <span class="col-title">Further feature curation needed</span>
+        <span class="col-count" id="count-Further feature curation needed">0</span>
+      </div>
+      <div class="drop-zone" id="zone-Further feature curation needed"></div>
+    </div>
+
+    <div class="column col-no"
+         ondragover="onDragOver(event)"
+         ondrop="onDrop(event,'Feature not present')"
+         ondragleave="onDragLeave(event)">
+      <div class="col-header">
+        <span class="col-title">Feature not present</span>
+        <span class="col-count" id="count-Feature not present">0</span>
+      </div>
+      <div class="drop-zone" id="zone-Feature not present"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const CATS = ['Feature mapping confirmed', 'Further feature curation needed', 'Feature not present'];
+let phrases = [];
+let categories = {};
+let dragId = null;
+let originalRows = [];
+let headerRowIndex = -1;
+
+function loadFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    originalRows = rows;
+    headerRowIndex = -1;
+
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][2] || '').trim() === 'record_type') {
+        headerRowIndex = i;
+        break;
+      }
+    }
+
+    phrases = [];
+    categories = {};
+    let matched = 0;
+
+    const dataStart = headerRowIndex >= 0 ? headerRowIndex + 1 : 1;
+
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      const colC = String(row[2] || '').trim().toLowerCase();
+      const colD = String(row[3] || '').trim().toLowerCase();
+      if (colC === 'phenotype:feature/sign/condition/disease' && colD === 'yes') {
+        const colF = String(row[5] || '').trim();
+        const colG = String(row[6] || '').trim();
+        phrases.push({ id: 'r' + i, rowIndex: i, colF, colG });
+        categories['r' + i] = 'Unsorted';
+        matched++;
+      }
+    }
+
+    const notice = document.getElementById('notice');
+    if (matched === 0) {
+      notice.className = 'notice visible warn';
+      notice.textContent = `No rows matched the filter (column C = "phenotype:feature/sign/condition/disease" AND column D = "yes"). Please check your spreadsheet.`;
+    } else {
+      notice.className = 'notice visible';
+      notice.textContent = `Found ${matched} matching row${matched > 1 ? 's' : ''} from ${rows.length - dataStart} total data rows. Drag each card into a category below, then export.`;
+    }
+
+    document.getElementById('export-btn').disabled = matched === 0;
+    render();
+    updateStats();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function render() {
+  const inbox = document.getElementById('inbox');
+  inbox.innerHTML = '';
+  CATS.forEach(z => {
+    document.getElementById('zone-' + z).innerHTML = '';
+    document.getElementById('count-' + z).textContent = '0';
+  });
+  phrases.forEach(p => {
+    const cat = categories[p.id];
+    const card = makeCard(p);
+    if (cat === 'Unsorted') inbox.appendChild(card);
+    else document.getElementById('zone-' + cat).appendChild(card);
+  });
+  updateCounts();
+  addEmptyHints();
+  updateProgress();
+}
+
+function makeCard(p) {
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.draggable = true;
+  div.dataset.id = p.id;
+  div.innerHTML = `<span class="col-f">${escHtml(p.colF)}</span><span class="arrow">→</span><span class="col-g">${escHtml(p.colG)}</span>`;
+  div.ondragstart = (e) => {
+    dragId = p.id;
+    setTimeout(() => div.classList.add('dragging'), 0);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  div.ondragend = () => {
+    div.classList.remove('dragging');
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  };
+  return div;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addEmptyHints() {
+  CATS.forEach(z => {
+    const zone = document.getElementById('zone-' + z);
+    if (!zone.querySelector('.card')) {
+      const h = document.createElement('div');
+      h.className = 'empty-hint';
+      h.textContent = 'Drop phrases here';
+      zone.appendChild(h);
+    }
+  });
+  const inbox = document.getElementById('inbox');
+  if (!inbox.querySelector('.card')) {
+    const h = document.createElement('div');
+    h.className = 'placeholder';
+    h.textContent = phrases.length ? 'All phrases sorted!' : 'No matching rows found.';
+    inbox.appendChild(h);
+  }
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.querySelector('.drop-zone').classList.add('drag-over');
+}
+function onDragLeave(e) {
+  e.currentTarget.querySelector('.drop-zone').classList.remove('drag-over');
+}
+function onDrop(e, cat) {
+  e.preventDefault();
+  e.currentTarget.querySelector('.drop-zone').classList.remove('drag-over');
+  if (!dragId) return;
+  categories[dragId] = cat;
+  render();
+  updateStats();
+}
+
+document.getElementById('inbox').addEventListener('dragover', e => {
+  e.preventDefault();
+  document.getElementById('inbox').classList.add('drag-over');
+});
+document.getElementById('inbox').addEventListener('dragleave', () => {
+  document.getElementById('inbox').classList.remove('drag-over');
+});
+document.getElementById('inbox').addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('inbox').classList.remove('drag-over');
+  if (!dragId) return;
+  categories[dragId] = 'Unsorted';
+  render();
+  updateStats();
+});
+
+function updateCounts() {
+  CATS.forEach(z => {
+    document.getElementById('count-' + z).textContent =
+      Object.values(categories).filter(c => c === z).length;
+  });
+}
+
+function updateProgress() {
+  if (!phrases.length) return;
+  const sorted = Object.values(categories).filter(c => c !== 'Unsorted').length;
+  const pct = Math.round((sorted / phrases.length) * 100);
+  document.getElementById('progress-wrap').className = 'progress-bar-wrap visible';
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+function updateStats() {
+  const el = document.getElementById('stats');
+  if (!phrases.length) { el.className = 'stats'; return; }
+  el.className = 'stats visible';
+  const counts = CATS.map(z => Object.values(categories).filter(c => c === z).length);
+  const unsorted = Object.values(categories).filter(c => c === 'Unsorted').length;
+  const sorted = phrases.length - unsorted;
+  el.innerHTML = `
+    <div class="stat"><b>${phrases.length}</b> total</div>
+    <div class="stat"><b>${sorted}</b> sorted</div>
+    <div class="stat"><b>${counts[0]}</b> confirmed</div>
+    <div class="stat"><b>${counts[1]}</b> needs curation</div>
+    <div class="stat"><b>${counts[2]}</b> not present</div>
+    <div class="stat"><b>${unsorted}</b> unsorted</div>`;
+}
+
+function exportXLSX() {
+  const catMap = {};
+  phrases.forEach(p => {
+    catMap[p.rowIndex] = categories[p.id] === 'Unsorted' ? '' : categories[p.id];
+  });
+
+  const rows = originalRows.map((row, i) => {
+    const newRow = [...row];
+    while (newRow.length < 16) newRow.push('');
+    if (i === headerRowIndex) {
+      newRow[15] = 'Category';
+    } else if (catMap[i] !== undefined) {
+      newRow[15] = catMap[i];
+    }
+    return newRow;
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Categorised');
+  XLSX.writeFile(wb, 'categorised_phrases.xlsx');
+}
+</script>
+</body>
+</html>
