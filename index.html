@@ -344,13 +344,15 @@ let categories = {};
 let dragId = null;
 let originalRows = [];
 let headerRowIndex = -1;
+let originalFileBytes = null;
 
 function loadFile(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(ev) {
-    const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+    originalFileBytes = ev.target.result;
+    const wb = XLSX.read(new Uint8Array(originalFileBytes), { type: 'array', cellStyles: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
@@ -527,21 +529,51 @@ function exportXLSX() {
     catMap[p.rowIndex] = categories[p.id] === 'Unsorted' ? '' : categories[p.id];
   });
 
-  const rows = originalRows.map((row, i) => {
-    const newRow = [...row];
-    while (newRow.length < 16) newRow.push('');
-    if (i === headerRowIndex) {
-      newRow[15] = 'Category';
-    } else if (catMap[i] !== undefined) {
-      newRow[15] = catMap[i];
-    }
-    return newRow;
+  // Re-read original file preserving all styles
+  const wb = XLSX.read(new Uint8Array(originalFileBytes), { type: 'array', cellStyles: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+
+  // Helper: encode cell address (0-indexed row/col)
+  function addr(r, c) {
+    const col = XLSX.utils.encode_col(c);
+    return col + (r + 1);
+  }
+
+  // Copy style from a reference cell in the same row (col A = index 0)
+  function cloneStyle(refAddr) {
+    const ref = ws[refAddr];
+    if (!ref) return {};
+    return { s: ref.s };
+  }
+
+  const headerExcelRow = headerRowIndex; // 0-indexed
+  const pColIdx = 15; // column P = index 15
+
+  // Write header cell
+  const hAddr = addr(headerExcelRow, pColIdx);
+  const hRefAddr = addr(headerExcelRow, 0);
+  ws[hAddr] = Object.assign({ t: 's', v: 'Category' }, cloneStyle(hRefAddr));
+
+  // Write category values for matched rows
+  Object.entries(catMap).forEach(([rowIdx, cat]) => {
+    const r = parseInt(rowIdx);
+    const cellAddr = addr(r, pColIdx);
+    const refAddr = addr(r, 0);
+    ws[cellAddr] = Object.assign({ t: 's', v: cat }, cloneStyle(refAddr));
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Categorised');
-  XLSX.writeFile(wb, 'categorised_phrases.xlsx');
+  // Extend the sheet range to include col P
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:O103');
+  if (range.e.c < pColIdx) range.e.c = pColIdx;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+
+  // Set col P width
+  const colInfo = ws['!cols'] || [];
+  while (colInfo.length <= pColIdx) colInfo.push({});
+  colInfo[pColIdx] = { wch: 30 };
+  ws['!cols'] = colInfo;
+
+  XLSX.writeFile(wb, 'categorised_phrases.xlsx', { cellStyles: true });
 }
 </script>
 </body>
